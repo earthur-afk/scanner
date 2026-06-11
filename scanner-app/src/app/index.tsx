@@ -70,7 +70,7 @@ export default function HomeScreen() {
             </ThemedText>
           ) : (
             <ThemedText type="title" style={styles.title}>
-              Scanner
+              Steeze
             </ThemedText>
           )}
         </ThemedView>
@@ -79,7 +79,7 @@ export default function HomeScreen() {
           style={({ pressed }) => pressed && styles.pressed}
           onPress={stage === 'result' ? handleReset : handleGetStarted}>
           <ThemedText type="code" style={styles.code}>
-            {stage === 'result' ? 'scan again' : 'get started'}
+            {stage === 'result' ? 'scan again' : 'Scan Here'}
           </ThemedText>
         </Pressable>
 
@@ -115,6 +115,9 @@ const styles = StyleSheet.create({
   },
   code: {
     textTransform: 'uppercase',
+    backgroundColor: "red",
+    padding: 20,
+    borderRadius:5,
   },
   pressed: {
     opacity: 0.7,
