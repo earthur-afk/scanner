@@ -141,8 +141,8 @@
 // });
 
 
-import React, { useState, useCallback, useEffect } from 'react';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, ActivityIndicator, Alert, Image, Dimensions } from 'react-native';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, ActivityIndicator, Alert, Image, Dimensions, TextInput } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL!;
@@ -226,48 +226,107 @@ export default function DocumentViewer() {
     }
   };
 
-  if (loading) {
+  const [query, setQuery] = useState('');
+  const [searchResults, setSearchResults] = useState(null);
+  const [searching, setSearching] = useState(false);
+  const debounceRef = useRef(null);
+
+  const handleSearch = useCallback((text) => {
+    setQuery(text);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (text.length < 2) {
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/search/${encodeURIComponent(text)}`);
+        const data = await res.json();
+        setSearchResults(data.success ? data.items : []);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+  }, []);
+
+  const clearSearch = useCallback(() => {
+    setQuery('');
+    setSearchResults(null);
+    setSearching(false);
+  }, []);
+
+  const isSearching = searchResults !== null;
+  const displayedItems = isSearching ? searchResults : items;
+
+  if (loading && !isSearching) {
     return <View style={styles.center}><ActivityIndicator size="large" color="#0000ff" /></View>;
   }
 
   return (
     <View style={styles.container}>
-      {folderHistory.length > 1 && (
+      <View style={styles.searchBar}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search PDFs and folders..."
+          placeholderTextColor="#999"
+          value={query}
+          onChangeText={handleSearch}
+          returnKeyType="search"
+        />
+        {query.length > 0 && (
+          <TouchableOpacity onPress={clearSearch} style={styles.clearBtn}>
+            <Text style={styles.clearBtnText}>✕</Text>
+          </TouchableOpacity>
+        )}
+        {searching && <ActivityIndicator size="small" color="#999" style={{ marginRight: 12 }} />}
+      </View>
+
+      {folderHistory.length > 1 && !isSearching && (
         <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
           <Text style={styles.backText}>⬅️ Back to Parent Folder</Text>
         </TouchableOpacity>
       )}
 
-      <FlatList
-        data={items}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        contentContainerStyle={styles.grid}
-        columnWrapperStyle={styles.row}
-        refreshing={refreshing}
-        onRefresh={handleRefresh}
-        renderItem={({ item }) => (
-          <TouchableOpacity style={styles.card} onPress={() => handleItemPress(item)} activeOpacity={0.7}>
-            <View style={styles.thumbnail}>
-              {item.mimeType === 'application/vnd.google-apps.folder' ? (
-                <Text style={styles.thumbnailIcon}>📁</Text>
-              ) : failedThumbs.has(item.id) ? (
-                <Text style={styles.thumbnailIcon}>📄</Text>
-              ) : (
-                <Image
-                  source={{ uri: `${BACKEND_URL}/thumbnail/${item.id}` }}
-                  style={styles.thumbnailImage}
-                  resizeMode="cover"
-                  onError={() => setFailedThumbs(prev => new Set(prev).add(item.id))}
-                />
-              )}
-            </View>
-            <Text style={styles.cardName} numberOfLines={2}>
-              {item.name}
-            </Text>
-          </TouchableOpacity>
-        )}
-      />
+      {isSearching && searchResults.length === 0 && !searching ? (
+        <View style={styles.center}>
+          <Text style={{ color: '#999' }}>No results for "{query}"</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={displayedItems}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
+          contentContainerStyle={styles.grid}
+          columnWrapperStyle={styles.row}
+          refreshing={!isSearching && refreshing}
+          onRefresh={!isSearching ? handleRefresh : undefined}
+          renderItem={({ item }) => (
+            <TouchableOpacity style={styles.card} onPress={() => handleItemPress(item)} activeOpacity={0.7}>
+              <View style={styles.thumbnail}>
+                {item.mimeType === 'application/vnd.google-apps.folder' ? (
+                  <Text style={styles.thumbnailIcon}>📁</Text>
+                ) : failedThumbs.has(item.id) ? (
+                  <Text style={styles.thumbnailIcon}>📄</Text>
+                ) : (
+                  <Image
+                    source={{ uri: `${BACKEND_URL}/thumbnail/${item.id}` }}
+                    style={styles.thumbnailImage}
+                    resizeMode="cover"
+                    onError={() => setFailedThumbs(prev => new Set(prev).add(item.id))}
+                  />
+                )}
+              </View>
+              <Text style={styles.cardName} numberOfLines={2}>
+                {item.name}
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
+      )}
     </View>
   );
 }
@@ -279,6 +338,31 @@ const CARD_WIDTH = (SCREEN_WIDTH - CARD_GAP * 3) / 2;
 const styles = StyleSheet.create({
   container: { flex: 1, paddingTop: 50, backgroundColor: '#f5f5f5' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 12,
+    marginBottom: 8,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  searchInput: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#333',
+  },
+  clearBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  clearBtnText: {
+    fontSize: 16,
+    color: '#999',
+  },
   backButton: { padding: 15, backgroundColor: '#eee', margin: 10, borderRadius: 5 },
   backText: { fontWeight: 'bold', color: '#333' },
   grid: {
