@@ -121,4 +121,24 @@ app.get('/api/drive/whoami', async (req, res) => {
   }
 });
 
+// 5. ENDPOINT: Search for PDFs and folders by name
+app.get('/api/drive/search/:query', async (req, res) => {
+  try {
+    const { query } = req.params;
+    if (!query || query.length < 2) {
+      return res.json({ success: true, items: [] });
+    }
+
+    const response = await drive.files.list({
+      q: `name contains '${query.replace(/'/g, "\\'")}' and trashed = false and (mimeType = 'application/pdf' or mimeType = 'application/vnd.google-apps.folder')`,
+      fields: 'files(id, name, mimeType, size, thumbnailLink)',
+      orderBy: 'folder,name',
+    });
+
+    res.json({ success: true, items: response.data.files });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(3000, () => console.log('Backend server running on port 3000'));
